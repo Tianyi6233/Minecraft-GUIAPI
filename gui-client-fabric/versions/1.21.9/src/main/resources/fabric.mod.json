@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "guiapi",
+	"version": "${version}",
+	"name": "GuiApi Client",
+	"description": "Client mod that draws server-driven windows and widgets in-game. Works with the GuiApi Paper plugin.",
+	"authors": ["GuiApi"],
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.guiapi.client.GuiApiClient"
+		]
+	},
+	"depends": {
+		"minecraft": "1.21.9",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

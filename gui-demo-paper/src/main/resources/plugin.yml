@@ -1,0 +1,11 @@
+﻿name: GuiDemo
+version: 1.0.0
+api-version: '1.20'
+main: com.guiapi.demo.GuiDemoPlugin
+depend: [GuiApi]
+description: Demo plugin for the GuiApi in-game window drawing API. Press N in-game or run /guidemo.
+authors: [GuiApi]
+commands:
+  guidemo:
+    description: Open the GuiApi demo window.
+    usage: /guidemo

@@ -1,0 +1,69 @@
+# Maven
+target/
+*.class
+
+# Gradle
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Java
+hs_err_pid*
+replay_pid*
+
+# Local tools / runtime
+jdk-*/
+.tools/
+.art/
+.m2/
+Server/
+client-deploy.log
+.screenshots/
+.aec-verify/
+.wavcheck/
+/com/
+
+# Player block plugin
+player-block-paper/
+
+# Voice denoise (separate project, not part of GUIAPI)
+svc-denoise-client/
+svc-denoise-paper/
+
+# Spin-off projects (not part of core GUIAPI framework)
+gui-admin-paper/
+gui-auction-paper/
+gui-kittens-paper/
+gui-menu-paper/
+gui-poster-paper/
+gui-reward-paper/
+
+# Big binary assets (not source)
+炸弹猫素材/
+规范资料/
+doc/logo.png
+docs/logo.png
+poster.png
+开发文档.md
+
+# Local build output jars
+api-client-fabric/
+api-paper/
+
+# Personal scripts
+*.bat
+*.cmd
+
+# OS
+.DS_Store
+Thumbs.db
