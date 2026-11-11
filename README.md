@@ -11,9 +11,8 @@
   <img src="https://img.shields.io/static/v1?label=CLIENT&message=FABRIC&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client: Fabric">
   <img src="https://img.shields.io/static/v1?label=VERSION&message=1.3.16&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.3.16">
 </p>
-
-<br/><br/><br/><br/><br/><br/><br/>
 - - -
+<br/><br/><br/><br/><br/>
 用 Bukkit API 写界面：Paper 插件下发一个窗口对象，玩家客户端里就出现一个可拖动的原生窗口，点击、滑块、勾选、下拉、输入全部回传到服务端主线程处理。
 
 ## 功能
