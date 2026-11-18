@@ -225,6 +225,17 @@ public final class GuiWindow {
         return scrollbar;
     }
 
+    /**
+     * Defines an invisible vertical viewport for widgets using {@code verticalDragGroup(group)}.
+     * The client clips the group to this height and moves its contents continuously. The
+     * scrollbar's 0–100 value stays available for server-side page buttons and state persistence.
+     */
+    public Scrollbar addVerticalViewport(String group, int y, int height) {
+        Scrollbar viewport = addScrollbar(group + "_scroll", 0, y, 12, height);
+        viewport.live(false).visible(false);
+        return viewport;
+    }
+
     public Checkbox addCheckbox(String id, int x, int y, String label, boolean checked) {
         Checkbox checkbox = new Checkbox(id, x, y, label, checked);
         add(checkbox);

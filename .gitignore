@@ -54,7 +54,6 @@ gui-reward-paper/
 doc/logo.png
 docs/logo.png
 poster.png
-开发文档.md
 
 # Local build output jars
 api-client-fabric/
@@ -67,3 +66,6 @@ api-paper/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local distribution jars
+/dist/

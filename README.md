@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/static/v1?label=MINECRAFT&message=1.20.1%20~%2026.3&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Minecraft 1.20.1 ~ 26.3">
   <img src="https://img.shields.io/static/v1?label=SERVER&message=PAPER&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Server: Paper">
   <img src="https://img.shields.io/static/v1?label=CLIENT&message=FABRIC&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client: Fabric">
-  <img src="https://img.shields.io/static/v1?label=VERSION&message=1.3.16&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.3.16">
+  <img src="https://img.shields.io/static/v1?label=VERSION&message=1.6.0&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.6.0">
 </p>
 
 - - -
@@ -33,25 +33,36 @@
 
 | 组件 | 位置 | 说明 |
 |---|---|---|
-| `guiapi-client-1.3.16.jar` | `.minecraft/mods` | Fabric 客户端，另需 [Fabric API](https://modrinth.com/mod/fabric-api) |
-| `gui-api-paper-1.6.5.jar` | 服务端 `plugins/` | 核心插件，其他 GUI 插件 `depend: [GuiApi]` |
+| `guiapi-client-1.6.0.jar` | `.minecraft/mods` | Fabric 客户端，另需 [Fabric API](https://modrinth.com/mod/fabric-api) |
+| `gui-api-paper-1.7.0.jar` | 服务端 `plugins/` | 核心插件，其他 GUI 插件 `depend: [GuiApi]` |
 
 **客户端按 Minecraft 版本各出一个 jar**（文件名相同，按版本目录区分）：
 
 | Minecraft | 客户端 jar | Java |
 |---|---|---|
-| 1.20.1 | `versions/1.20.1/build/libs/guiapi-client-1.3.16.jar` | 17+ |
+| 1.20.1 | `versions/1.20.1/build/libs/guiapi-client-1.6.0.jar` | 17+ |
 | 1.21 / 1.21.1 | `versions/1.21/`、`versions/1.21.1/` | 21+ |
 | 1.21.4 | `versions/1.21.4/` | 21+ |
 | 1.21.5 | `versions/1.21.5/` | 21+ |
 | 1.21.8 | `versions/1.21.8/` | 21+ |
 | 1.21.9 / 1.21.10 / 1.21.11 | `versions/1.21.9/`、`versions/1.21.10/`、`versions/1.21.11/` | 21+ |
 | 26.1 / 26.1.1 | `versions/26.1/`、`versions/26.1.1/` | 25+ |
-| 26.1.2 | `build/libs/guiapi-client-1.3.16.jar` | 25+ |
+| 26.1.2 | `build/libs/guiapi-client-1.6.0.jar` | 25+ |
 | 26.2 | `versions/26.2/` | 25+ |
 | 26.3 | `versions/26.3/` | 25+ |
 
-**服务端只有一个 jar**：编译目标是 Paper 1.20.1 的 API、Java 17 字节码，`api-version: '1.20'`，所以同一个 `gui-api-paper-1.6.5.jar` 可以直接跑在 **Paper 1.20.1 到最新版** 上（Paper 官方 1.20.1+ 都接受这个 api-version）。Fabric Loader 不限版本。玩家没装客户端模组时，服务端会通过握手检测到，可以提示或拒绝。
+**服务端只有一个 jar**：编译目标是 Paper 1.20.1 的 API、Java 17 字节码，`api-version: '1.20'`，所以同一个 `gui-api-paper-1.7.0.jar` 可以直接跑在 **Paper 1.20.1 到最新版** 上（Paper 官方 1.20.1+ 都接受这个 api-version）。Fabric Loader 不限版本。玩家没装客户端模组时，服务端会通过握手检测到，可以提示或拒绝。
+
+## 发行产物
+
+`release/1.6.0/` 提供本版本的预编译产物：
+
+| 文件 | 说明 |
+|---|---|
+| `guiapi-client-1.6.0.jar` | Fabric 客户端，**编译自 Minecraft 26.1.2** |
+| `gui-api-paper-1.7.0.jar` | Paper 服务端，兼容 1.20.1+ |
+
+> 客户端产物只提供 **26.1.2** 一份；其他 Minecraft 版本请在 `gui-client-fabric/versions/<版本>/` 下自行执行 `.\gradlew build`，编译方法见 [开发文档](开发文档.md) 第 3 节。服务端 jar 全版本通用，不需要按版本编译。
 
 ## 快速开始
 
@@ -99,7 +110,7 @@ cd gui-client-fabric
 gradlew build
 ```
 
-产物：`gui-api-paper/target/gui-api-paper-1.6.5.jar`（一个 jar 兼容 Paper 1.20.1+）、`gui-client-fabric/build/libs/guiapi-client-1.3.16.jar`（26.1.2 客户端）。
+产物：`gui-api-paper/target/gui-api-paper-1.7.0.jar`（一个 jar 兼容 Paper 1.20.1+）、`gui-client-fabric/build/libs/guiapi-client-1.6.0.jar`（26.1.2 客户端）。
 
 其他 Minecraft 版本的客户端各自独立构建：
 

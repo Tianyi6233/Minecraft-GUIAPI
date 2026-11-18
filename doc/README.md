@@ -7,7 +7,7 @@ GuiApi 是一套「服务端画界面、客户端来渲染」的 Minecraft GUI �
 - 只有装了 GuiApi 客户端模组的玩家能看到界面，服务端用 `GuiApi.get().isClientSupported(player)` 判断。
 - 位置与尺寸用**客户端虚拟像素**（设计基准 640×430）。虚拟画布 = 屏幕逻辑尺寸 ÷ 统一缩放，屏幕够大时等于屏幕逻辑尺寸（例如 1280×720），所以**固定像素坐标在不同分辨率下物理大小不同**；要跨分辨率一致，请用百分比 + `aspect`。
 
-本文档面向只拿到 `gui-api-paper` 插件 jar 与 `guiapi-client` 模组、没有 GuiApi 源码的第三方插件开发者。文中方法名、参数顺序均与 `com.guiapi:gui-api-paper:1.6.4` 的实际公开 API 一致，示例可直接编译。
+本文档面向只拿到 `gui-api-paper` 插件 jar 与 `guiapi-client` 模组、没有 GuiApi 源码的第三方插件开发者。文中方法名、参数顺序均与 `com.guiapi:gui-api-paper:1.7.0`（客户端模组 1.6.0）的实际公开 API 一致，示例可直接编译。
 
 ---
 
@@ -21,9 +21,10 @@ GuiApi 是一套「服务端画界面、客户端来渲染」的 Minecraft GUI �
 | [04-表单控件](./04-表单控件.md) | TextField、Slider、Scrollbar、Checkbox、Radio、Dropdown、ItemWidget | 做可输入、可选择的界面 |
 | [05-事件与交互](./05-事件与交互.md) | 事件类型、GuiActionEvent、局部刷新、关闭回调、多窗口协作 | 让界面真正能用 |
 | [06-图片与音效](./06-图片与音效.md) | registerImage / preloadImage / registerSound / playSound / 循环音效 / 窗口级点击音 | 做卡牌、图标、背景图和点击音 |
-| [07-按键与客户端能力](./07-按键与客户端能力.md) | 快捷键绑定、按键回调、客户端版本判断、runCommand | 做快捷键呼出的界面 |
+| [07-按键与客户端能力](./07-按键与客户端能力.md) | 快捷键绑定、按键回调、客户端可改键、客户端版本判断、runCommand | 做快捷键呼出的界面 |
 | [08-布局技巧与常见问题](./08-布局技巧与常见问题.md) | 响应式套路、控件尺寸速查、踩坑清单 | 布局开始变复杂时 |
 | [09-实战案例](./09-实战案例.md) | 从零写一个完整功能界面（列表 + 表单 + 刷新） | 写第一个正式界面 |
+| [10-API索引](./10-API索引.md) | 全部公开类与方法的速查表 | 想确认某个方法是否存在 / 参数是什么 |
 
 ---
 
@@ -40,6 +41,7 @@ GuiApi 是一套「服务端画界面、客户端来渲染」的 Minecraft GUI �
 | 图片 | 服务端注册 PNG，按需下发，控件按 id 引用 | `registerImage`、`preloadImage`、`sendImage` |
 | 音效 | 服务端注册 OGG，客户端播放，支持循环与音量 | `registerSound`、`playSound`、`playLoopingSound`、`stopSound` |
 | 快捷键 | 服务端绑定 GLFW 键码与回调，重连后自动重发 | `addKeyHandler`、`bindKey` |
+| 可改键快捷键 | 玩家能在原版「按键设置」里看到并修改（需客户端模组注册） | `GuiApiKeybinds.register` |
 | 客户端能力 | 是否装了模组、模组版本、让客户端执行命令 | `isClientSupported`、`clientVersion`、`runCommand` |
 
 ---
@@ -49,7 +51,7 @@ GuiApi 是一套「服务端画界面、客户端来渲染」的 Minecraft GUI �
 ### 服务端
 
 1. 一台 Paper 服务端，**1.20.1 到最新版都行**（`api-version` 为 `1.20`）。
-2. 把 `gui-api-paper-1.6.5.jar` 放进 `plugins/`。
+2. 把 `gui-api-paper-1.7.0.jar` 放进 `plugins/`。
 3. 重启服务端，控制台出现 `GuiApi ready on channel guiapi:main` 即表示就绪。
 
 ### 客户端
@@ -66,14 +68,14 @@ GuiApi 是一套「服务端画界面、客户端来渲染」的 Minecraft GUI �
 <dependency>
     <groupId>com.guiapi</groupId>
     <artifactId>gui-api-paper</artifactId>
-    <version>1.6.4</version>
+    <version>1.7.0</version>
     <scope>provided</scope>
 </dependency>
 ```
 
 - `scope` 必须是 `provided`：GuiApi 的类由服务端的 GuiApi 插件提供，**不要**打进你自己的 jar，否则会与插件里的类冲突。
 - 依赖不在你的公共仓库里时，先把 jar 装进本地仓库：
-  `mvn install:install-file -Dfile=gui-api-paper-1.6.4.jar -DgroupId=com.guiapi -DartifactId=gui-api-paper -Dversion=1.6.4 -Dpackaging=jar`
+  `mvn install:install-file -Dfile=gui-api-paper-1.7.0.jar -DgroupId=com.guiapi -DartifactId=gui-api-paper -Dversion=1.7.0 -Dpackaging=jar`
 - `plugin.yml` 必须声明依赖，否则 `GuiApi.get()` 可能在 GuiApi 启用前被调用：
 
 ```yaml
@@ -97,8 +99,8 @@ depend: [GuiApi]
 | `windowsOf(Player)` | 该玩家当前打开的窗口 | 只读用途，不要修改返回的 Map |
 | `onWindowClosed(String windowId, Consumer<GuiWindow>)` | 玩家在客户端关掉窗口时的回调 | 按 windowId 注册，对所有玩家生效 |
 | `isClientSupported(Player)` | 客户端是否装了模组并完成握手 | 开界面前必须检查 |
-| `clientVersion(Player)` | 客户端模组版本，如 `"1.3.12"` | 旧客户端返回 `null` |
-| `registerImage(String, byte[])` | 注册图片（PNG/JPEG 字节） | 同名重复注册会递增版本；下次 `openWindow` 时才会补发新图 |
+| `clientVersion(Player)` | 客户端模组版本，如 `"1.6.0"` | 旧客户端返回 `null` |
+| `registerImage(String, byte[])` | 注册图片（**只支持 PNG** 字节，JPEG 会在客户端解码失败） | 同名重复注册会递增版本；下次 `openWindow` 时才会补发新图 |
 | `preloadImage(Player, String)` | 预下发图片 | 适合稍后通过 `updateWidget` 才出现的图片 |
 | `registerSound(String, byte[])` | 注册音效（OGG 字节） | 客户端会把它放进自动生成的资源包 |
 | `playSound(Player, String)` / `playSound(Player, String, float, float)` | 播放一次音效 | 后两个参数是音量、音高 |
@@ -200,7 +202,7 @@ commands:
 
 | 项目 | 要求 |
 | --- | --- |
-| GuiApi 服务端插件 | `com.guiapi:gui-api-paper:1.6.5`（`plugin.yml` 中 `api-version: '1.20'`） |
+| GuiApi 服务端插件 | `com.guiapi:gui-api-paper:1.7.0`（`plugin.yml` 中 `api-version: '1.20'`） |
 | 服务端 | Paper 1.20.1 ~ 最新版，Java 17+ |
 | 客户端模组 | 模组 id `guiapi`，按游戏版本选择对应构建（1.20.1 / 1.21 / 1.21.1 / 1.21.4 / 1.21.5 / 1.21.8 / 1.21.9 / 1.21.10 / 1.21.11 / 26.1 / 26.1.1 / 26.1.2 / 26.2 / 26.3），不限 Fabric Loader 版本，需 Fabric API |
 | 最低客户端 | `isClientSupported` 只判断「装没装」；要限制版本用 `clientVersion` 自己比较（见 07 章） |

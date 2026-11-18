@@ -39,7 +39,7 @@ public final class GuiApiPlugin extends JavaPlugin implements PluginMessageListe
         api.removePlayer(event.getPlayer().getUniqueId());
     }
 
-    /** Called on a Netty worker thread — re-dispatch everything on the main thread. */
+    /** Called on a Netty worker thread — re-dispatch on the player's region thread (Folia-safe). */
     @Override
     public void onPluginMessageReceived(@NotNull String channel, @NotNull Player player, byte[] message) {
         if (!Protocol.CHANNEL.equals(channel)) return;
@@ -53,7 +53,11 @@ public final class GuiApiPlugin extends JavaPlugin implements PluginMessageListe
             return;
         }
         String type = json.has("type") ? json.get("type").getAsString() : "";
-        Bukkit.getScheduler().runTask(this, () -> dispatch(player, type, json));
+        // Folia removes the global scheduler when folia-supported: true is declared.
+        // EntityScheduler.execute(...) runs the task on the player's region thread on
+        // Folia, and on the main thread on regular Paper. The retired runnable fires if
+        // the player's region is no longer available.
+        player.getScheduler().execute(this, () -> dispatch(player, type, json), () -> {}, 0);
     }
 
     private void dispatch(Player player, String type, JsonObject json) {

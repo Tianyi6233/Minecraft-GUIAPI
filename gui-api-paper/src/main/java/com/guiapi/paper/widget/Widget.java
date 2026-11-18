@@ -84,6 +84,15 @@ public abstract class Widget {
     }
 
     /**
+     * Puts the widget into a vertically draggable group. Pair the group with
+     * {@link com.guiapi.paper.GuiWindow#addVerticalViewport(String, int, int)}; all widgets in
+     * the group then move continuously with left-drag and mouse-wheel input inside that viewport.
+     */
+    public Widget verticalDragGroup(String group) {
+        return dragGroup(group == null || group.isBlank() ? null : "v:" + group);
+    }
+
+    /**
      * Draws a soft glow around the widget in the given colour. Used for the selected card,
      * the current player's seat and other "look at me" highlights.
      */

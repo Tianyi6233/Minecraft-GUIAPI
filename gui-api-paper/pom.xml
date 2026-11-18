@@ -11,7 +11,7 @@
     </parent>
 
     <artifactId>gui-api-paper</artifactId>
-    <version>1.6.5</version>
+    <version>1.7.0</version>
     <packaging>jar</packaging>
 
     <repositories>
@@ -25,7 +25,7 @@
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.20.1-R0.1-SNAPSHOT</version>
+            <version>26.1.2.build.74-stable</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>

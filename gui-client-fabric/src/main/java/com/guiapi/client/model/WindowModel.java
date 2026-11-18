@@ -32,6 +32,7 @@ public final class WindowModel {
     /** Optional font id for text in this window (empty = vanilla default font). */
     public final String font;
     public final List<WidgetModel> widgets = new ArrayList<>();
+    private final java.util.Map<String, WidgetModel> widgetsById = new java.util.HashMap<>();
 
     public WindowModel(JsonObject json) {
         this.id = opt(json, "id", "window");
@@ -57,13 +58,16 @@ public final class WindowModel {
         JsonArray arr = json.has("widgets") && json.get("widgets").isJsonArray()
                 ? json.getAsJsonArray("widgets") : new JsonArray();
         for (JsonElement e : arr) {
-            if (e.isJsonObject()) widgets.add(new WidgetModel(e.getAsJsonObject()));
+            if (e.isJsonObject()) {
+                WidgetModel widget = new WidgetModel(e.getAsJsonObject());
+                widgets.add(widget);
+                widgetsById.put(widget.id(), widget);
+            }
         }
     }
 
     public WidgetModel widget(String id) {
-        for (WidgetModel w : widgets) if (w.id().equals(id)) return w;
-        return null;
+        return widgetsById.get(id);
     }
 
     private static String opt(JsonObject json, String key, String def) {

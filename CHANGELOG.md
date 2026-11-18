@@ -1,5 +1,56 @@
 # 更新日志
 
+## 客户端 1.6.0 / 服务端 1.7.0
+
+### 新增
+
+- **可改键的快捷键 API（客户端）**：`GuiApiKeybinds.register(id, label, defaultKey[, action])`。注册后快捷键出现在原版「选项 → 控制 → 按键绑定 → GuiApi」分类，玩家可自行改键、原版会提示冲突，设置写入 `options.txt`。`defaultKey` 传 `GLFW.GLFW_KEY_*` 为默认键，传 `null` 为默认不绑定；同一 `id` 重复注册返回已有绑定
+- **通用纵向滚动（服务端）**：`Widget.verticalDragGroup(group)` 把控件加入滚动组，`GuiWindow.addVerticalViewport(group, y, height)` 声明可视区域并返回对应的 `Scrollbar`，不新增协议字段
+
+### 兼容
+
+- 原有的 `bindKey` 隐形快捷键完全保留，行为不变；两套快捷键可同时使用
+- 服务端 `GuiApi` 公开方法签名无变化，旧插件无需重新编译
+
+## 客户端 1.5.1
+
+### 修复
+
+- **输入法冲突模组下无法输入中文**：输入框改为通过 `Minecraft.onTextInputFocusChange` 注册文本输入焦点，并实现 `preeditUpdated` 与 `IMEPreeditOverlay`，拼音预编辑串正常显示
+- **Ctrl+A/C/V/X 无效**：改用原版的 `isSelectAll/isCopy/isPaste/isCut` 判定，并在 `charTyped` 里兜底控制字符，避免部分输入法吞掉组合键
+
+## 客户端 1.5.0
+
+### 新增
+
+- 输入框快捷键：`Ctrl+C` 复制、`Ctrl+V` 粘贴、`Ctrl+X` 剪切、`Ctrl+A` 全选、`Del` 删除所选、`Shift+←/→` 选中；macOS 使用 `Command` 键
+- 输入框支持选区高亮与替换输入，粘贴时自动过滤控制字符
+
+## 客户端 1.4.3
+
+### 修复
+
+- **跨服务器状态残留**：切换服务器或重连时统一执行 `resetSession()`，清理窗口、动态图片纹理、音效、分片缓存与快捷键，避免正式服商品较多时沿用上一个服务器的布局导致溢出
+
+## 客户端 1.4.2
+
+### 修复
+
+- 纵向滚动区域的鼠标滚轮方向反了，改为与拖动方向一致
+
+## 客户端 1.4.1 / 交易所 1.2.1
+
+### 修复
+
+- **滚动卡顿**：商品查找改为哈希索引，滚动时不再每帧遍历全部控件
+- **翻页误触购买**：裁剪区外的控件不再响应点击，上下页按钮不会穿透到商品行
+
+## 客户端 1.4.0 / 交易所 1.2.0
+
+### 新增
+
+- 通用纵向滚动：`verticalDragGroup` + `addVerticalViewport`，支持拖动、滚轮、140ms 缓动与 scissor 裁剪
+
 ## 客户端 1.3.16 / 服务端 1.6.5
 
 ### 新增
