@@ -41,12 +41,17 @@
 | 交易所 | 炸弹猫 |
 |:---:|:---:|
 | <img src="doc/screenshots/exchange.png" width="420" /> | <img src="doc/screenshots/bomb-cat.png" width="420" /> |
-| 商品列表、翻页、滚动与购买确认 | 卡牌式布局与物品栏组合 |
+| 拍卖行商品列表、搜索、翻页（共 30 页）与购买确认 | 卡牌式布局与物品栏组合 |
 
 | 自定义菜单 |
 |:---:|
 | <img src="doc/screenshots/menu.png" width="860" /> |
 | 面板、按钮、复选框等控件组合的服务器菜单 |
+
+| 实战案例：管理员工具箱 |
+|:---:|
+| <img src="doc/screenshots/admin-toolbox.png" width="860" /> |
+| 选项卡 + 复选框开关：无限物品、耐久锁定、上帝模式、隐身模式，状态实时回传 |
 
 ## 安装
 
