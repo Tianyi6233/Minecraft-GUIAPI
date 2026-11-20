@@ -1,6 +1,8 @@
 package com.guiapi.client;
 
 import com.guiapi.client.font.SysFont;
+import com.guiapi.client.gui.GuiManager;
+import com.guiapi.client.gui.GuiSound;
 import com.guiapi.client.input.KeyBindings;
 import com.guiapi.client.input.RegisteredKeys;
 import com.guiapi.client.net.ClientNet;
@@ -27,11 +29,15 @@ public class GuiApiClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STARTED.register(SysFont::ensure);
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientNet.sendReady());
-        // shortcuts belong to the server we just left, never carry them over
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            KeyBindings.clear();
-            RegisteredKeys.clear();
-            com.guiapi.client.gui.GuiSound.stopAll();
-        });
+        // A new connection must never inherit windows, images, shortcuts or packets.
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> resetSession());
+    }
+
+    private static void resetSession() {
+        KeyBindings.clear();
+        RegisteredKeys.clear();
+        GuiSound.stopAll();
+        GuiManager.resetSession();
+        ClientNet.resetSession();
     }
 }

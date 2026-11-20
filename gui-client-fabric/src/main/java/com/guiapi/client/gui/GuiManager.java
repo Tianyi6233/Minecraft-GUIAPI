@@ -37,7 +37,18 @@ public final class GuiManager {
                 WindowModel model = new WindowModel(json.getAsJsonObject("window"));
                 GuiWindowScreen.WindowState existing = find(model.id);
                 if (existing != null) {
+                    String draggedScrollbarId = existing.activeScrollbar != null
+                            ? existing.activeScrollbar.id() : null;
                     existing.model = model; // replace content, keep dragged position
+                    if (draggedScrollbarId != null) {
+                        existing.activeScrollbar = null;
+                        for (com.guiapi.client.model.WidgetModel widget : model.widgets) {
+                            if ("scrollbar".equals(widget.type()) && draggedScrollbarId.equals(widget.id())) {
+                                existing.activeScrollbar = widget;
+                                break;
+                            }
+                        }
+                    }
                     existing.focusedText = null;
                     existing.textCursor = 0;
                     // re-opening a window must raise it, otherwise a fullscreen page keeps hiding it
@@ -65,6 +76,9 @@ public final class GuiManager {
                     com.guiapi.client.model.WidgetModel widget = ws.model.widget(opt(json, "widget"));
                     if (widget != null && json.has("props")) {
                         widget.merge(json.getAsJsonObject("props"));
+                        if (mc.screen instanceof GuiWindowScreen screen) {
+                            screen.syncVerticalScrollFromServer(ws, widget);
+                        }
                     }
                 }
             }
@@ -202,5 +216,18 @@ public final class GuiManager {
 
     public static int[] imageSize(String imageId) {
         return imageSizes.get(imageId);
+    }
+
+    /** Clears every window and image owned by a server connection. */
+    public static void resetSession() {
+        windows.clear();
+        Minecraft mc = Minecraft.getInstance();
+        for (Identifier id : imageTextures.values()) {
+            mc.getTextureManager().release(id);
+        }
+        imageTextures.clear();
+        imageSizes.clear();
+        imageBytes.clear();
+        if (mc.screen instanceof GuiWindowScreen) mc.setScreen(null);
     }
 }

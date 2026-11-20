@@ -81,6 +81,14 @@ public final class ClientNet {
         chunkReceived.remove(transferId);
     }
 
+    /** Drops partial transfers owned by the previous server connection. */
+    public static void resetSession() {
+        chunks.clear();
+        chunkCounts.clear();
+        chunkReceived.clear();
+        nextTransferId = 1;
+    }
+
     // ------------------------------------------------------------ send
 
     public static void send(JsonObject json) {

@@ -516,8 +516,10 @@ public final class GuiWindowScreen extends Screen {
         for (String group : verticalGroups(ws)) {
             WidgetModel viewport = verticalScrollbar(ws, group);
             int viewportY = baseWidgetY(ws, viewport);
-            g.enableScissor(toScreen(winX(ws)), toScreen(viewportY),
-                    toScreen(winX(ws) + winW(ws)), toScreen(viewportY + widgetH(ws, viewport)));
+            // pose is already scaled by uiScale here, so pass virtual coordinates directly
+            // (enableScissor transforms the rectangle through the current pose matrix)
+            g.enableScissor(winX(ws), viewportY,
+                    winX(ws) + winW(ws), viewportY + widgetH(ws, viewport));
             for (WidgetModel widget : ws.model.widgets) {
                 if (group.equals(widget.str("dragGroup"))) renderWidget(g, ws, widget, mouseX, mouseY);
             }
