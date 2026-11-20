@@ -2,6 +2,7 @@ package com.guiapi.client;
 
 import com.guiapi.client.font.SysFont;
 import com.guiapi.client.input.KeyBindings;
+import com.guiapi.client.input.RegisteredKeys;
 import com.guiapi.client.net.ClientNet;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -21,6 +22,7 @@ public class GuiApiClient implements ClientModInitializer {
         ClientNet.register();
 
         ClientTickEvents.END_CLIENT_TICK.register(KeyBindings::tick);
+        ClientTickEvents.END_CLIENT_TICK.register(RegisteredKeys::tick);
         // 启动后装一次系统字体包（让服务端可以用 guiapi:sysfont 指定 Windows 字体）
         ClientLifecycleEvents.CLIENT_STARTED.register(SysFont::ensure);
 
@@ -28,6 +30,7 @@ public class GuiApiClient implements ClientModInitializer {
         // shortcuts belong to the server we just left, never carry them over
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             KeyBindings.clear();
+            RegisteredKeys.clear();
             com.guiapi.client.gui.GuiSound.stopAll();
         });
     }

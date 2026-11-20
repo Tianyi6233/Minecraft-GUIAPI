@@ -47,6 +47,9 @@ gui-kittens-paper/
 gui-menu-paper/
 gui-poster-paper/
 gui-reward-paper/
+aec-control-plugin/
+lava-guard-paper/
+restart-flow-paper/
 
 # Big binary assets (not source)
 炸弹猫素材/
@@ -54,6 +57,11 @@ gui-reward-paper/
 doc/logo.png
 docs/logo.png
 poster.png
+IMG/
+
+# Loose binaries
+*.jar
+*.tar.gz
 
 # Local build output jars
 api-client-fabric/

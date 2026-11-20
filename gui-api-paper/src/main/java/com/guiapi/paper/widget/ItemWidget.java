@@ -3,9 +3,17 @@ package com.guiapi.paper.widget;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.guiapi.paper.GuiActionEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TranslatableComponent;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -16,9 +24,12 @@ public class ItemWidget extends Widget {
     private String material;
     private int amount = 1;
     private String displayName;
+    private String nameKey;
     private List<String> lore;
     private List<String> enchants;
     private boolean enchanted;
+    private Integer customModelData;
+    private String itemModel;
     private Consumer<GuiActionEvent> clickHandler;
 
     /**
@@ -84,6 +95,91 @@ public class ItemWidget extends Widget {
         return this;
     }
 
+    public Integer customModelData() { return customModelData; }
+    public String itemModel() { return itemModel; }
+    public String nameKey() { return nameKey; }
+
+    /**
+     * Custom model data, used by resource packs that give a vanilla item a different look.
+     * {@code null} resets it. Clients older than the version that reads this field simply
+     * fall back to the plain material.
+     */
+    public ItemWidget customModelData(Integer customModelData) {
+        this.customModelData = customModelData;
+        return this;
+    }
+
+    /**
+     * Item model component id, e.g. {@code "farmersdelight:item/tomato"}. This is the modern
+     * (1.21.4+) way of restyling a vanilla item and takes precedence over custom model data.
+     */
+    public ItemWidget itemModel(String itemModel) {
+        this.itemModel = itemModel == null || itemModel.isEmpty() ? null : itemModel;
+        return this;
+    }
+
+    /**
+     * Translation key for the item name, e.g. {@code "item.farmersdelight.tomato"}. When set,
+     * the client resolves it against its own language (including server resource packs), so
+     * custom items show the name the player is used to instead of the base material name.
+     */
+    public ItemWidget nameKey(String nameKey) {
+        this.nameKey = nameKey == null || nameKey.isEmpty() ? null : nameKey;
+        return this;
+    }
+
+    /**
+     * Copies the full look of a real {@link ItemStack}: material, amount, name, lore,
+     * enchantments, glint, custom model data and item model. Use it whenever the widget should
+     * mirror an item the player actually owns, so resource-pack restyled items keep their look.
+     */
+    public ItemWidget from(ItemStack stack) {
+        if (stack == null) return this;
+        material(stack.getType());
+        amount(stack.getAmount());
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) return this;
+
+        Component name = null;
+        if (meta.hasItemName()) name = meta.itemName();
+        else if (meta.hasDisplayName()) name = meta.displayName();
+        if (name instanceof TranslatableComponent translatable
+                && translatable.args().isEmpty() && translatable.children().isEmpty()) {
+            nameKey(translatable.key());
+            displayName(null);
+        } else if (name != null) {
+            nameKey(null);
+            displayName(PlainTextComponentSerializer.plainText().serialize(name));
+        }
+
+        if (meta.hasLore()) {
+            List<String> lines = new ArrayList<>();
+            for (Component line : meta.lore()) {
+                lines.add(PlainTextComponentSerializer.plainText().serialize(line));
+            }
+            lore(lines);
+        }
+
+        List<String> enchantLines = new ArrayList<>();
+        for (Map.Entry<Enchantment, Integer> entry : meta.getEnchants().entrySet()) {
+            enchantLines.add(entry.getKey().translationKey() + ":" + entry.getValue());
+        }
+        if (meta instanceof EnchantmentStorageMeta storage) {
+            for (Map.Entry<Enchantment, Integer> entry : storage.getStoredEnchants().entrySet()) {
+                enchantLines.add(entry.getKey().translationKey() + ":" + entry.getValue());
+            }
+        }
+        if (!enchantLines.isEmpty()) {
+            enchanted(true);
+            enchants(enchantLines);
+        }
+
+        customModelData(meta.hasCustomModelData() ? meta.getCustomModelData() : null);
+        itemModel(meta.hasItemModel() && meta.getItemModel() != null
+                ? meta.getItemModel().toString() : null);
+        return this;
+    }
+
     /** Binds a click handler. The event value is empty. */
     public ItemWidget onClick(Consumer<GuiActionEvent> handler) {
         this.clickHandler = handler;
@@ -96,6 +192,9 @@ public class ItemWidget extends Widget {
         json.addProperty("material", material);
         json.addProperty("amount", amount);
         if (displayName != null) json.addProperty("displayName", displayName);
+        if (nameKey != null) json.addProperty("nameKey", nameKey);
+        if (customModelData != null) json.addProperty("customModelData", customModelData);
+        if (itemModel != null) json.addProperty("itemModel", itemModel);
         if (lore != null && !lore.isEmpty()) {
             JsonArray arr = new JsonArray();
             for (String line : lore) arr.add(line);

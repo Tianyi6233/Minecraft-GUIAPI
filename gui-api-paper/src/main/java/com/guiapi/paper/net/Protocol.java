@@ -28,6 +28,14 @@ public final class Protocol {
     public static final String TYPE_UNBIND_KEY = "unbind_key";
     /** Removes every shortcut the server bound. */
     public static final String TYPE_CLEAR_KEYS = "clear_keys";
+    /**
+     * Registers a player-visible, rebindable shortcut in the vanilla Controls screen:
+     * {key, label, code?}. {@code code} is a GLFW key code; absent or {@code <= 0} means
+     * "unbound by default, player sets it themselves".
+     */
+    public static final String TYPE_REGISTER_KEY = "register_key";
+    /** Removes a previously registered shortcut: {key}. */
+    public static final String TYPE_UNREGISTER_KEY = "unregister_key";
     /** Closes every window on the client and then runs a chat command there: {command}. */
     public static final String TYPE_RUN_COMMAND = "run_command";
 

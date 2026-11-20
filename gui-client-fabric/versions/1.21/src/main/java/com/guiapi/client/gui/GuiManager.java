@@ -87,6 +87,13 @@ public final class GuiManager {
             }
             case "unbind_key" -> com.guiapi.client.input.KeyBindings.unbind(opt(json, "key"));
             case "clear_keys" -> com.guiapi.client.input.KeyBindings.clear();
+            case "register_key" -> {
+                String rkey = opt(json, "key");
+                String rlabel = opt(json, "label");
+                Integer rcode = json.has("code") ? json.get("code").getAsInt() : null;
+                com.guiapi.client.input.RegisteredKeys.register(rkey, rlabel, rcode);
+            }
+            case "unregister_key" -> com.guiapi.client.input.RegisteredKeys.unregister(opt(json, "key"));
             case "run_command" -> {
                 windows.clear();
                 if (mc.screen instanceof GuiWindowScreen) mc.setScreen(null);

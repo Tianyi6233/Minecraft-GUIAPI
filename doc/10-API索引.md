@@ -1,4 +1,4 @@
-# 10 - API 索引
+﻿﻿﻿﻿# 10 - API 索引
 
 > 本页是 `gui-api-paper 1.7.0` 与客户端模组 `1.6.0` **全部公开方法**的速查表。
 > 只要方法出现在这里，就一定能被第三方插件/模组调用；没出现的都是内部实现。
@@ -161,7 +161,7 @@
 
 ### 4.11 `ItemWidget`
 
-`material()`、`material(String)`、`material(org.bukkit.Material)`、`amount()`、`amount(int)`、`displayName()`、`displayName(String)`、`lore()`、`lore(List<String>)`、`enchants()`、`enchants(List<String>)`、`enchanted()`、`enchanted(boolean)`、`onClick(Consumer<GuiActionEvent>)`、`clickHandler()`
+`material()`、`material(String)`、`material(org.bukkit.Material)`、`amount()`、`amount(int)`、`displayName()`、`displayName(String)`、`nameKey()`、`nameKey(String)`、`lore()`、`lore(List<String>)`、`enchants()`、`enchants(List<String>)`、`enchanted()`、`enchanted(boolean)`、`customModelData()`、`customModelData(Integer)`、`itemModel()`、`itemModel(String)`、`from(org.bukkit.inventory.ItemStack)`、`onClick(Consumer<GuiActionEvent>)`、`clickHandler()`
 
 ---
 

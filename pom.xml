@@ -12,6 +12,7 @@
     <modules>
         <module>gui-api-paper</module>
         <module>gui-demo-paper</module>
+        <module>restart-flow-paper</module>
     </modules>
 
     <properties>

@@ -1465,12 +1465,21 @@ public final class GuiWindowScreen extends Screen {
         if (id == null) return ItemStack.EMPTY;
         Item item = BuiltInRegistries.ITEM.get(id);
         if (item == null || item == net.minecraft.world.item.Items.AIR) return ItemStack.EMPTY;
-        return new ItemStack(item, Math.max(1, w.num("amount")));
+        ItemStack stack = new ItemStack(item, Math.max(1, w.num("amount")));
+        int cmd = w.num("customModelData");
+        if (cmd > 0) stack.getOrCreateTag().putInt("CustomModelData", cmd);
+        return stack;
     }
 
     /** Builds a multi-line tooltip string for an item widget. */
     private static String itemTooltip(WidgetModel w, ItemStack stack) {
-        String name = w.str("displayName");
+        String name = "";
+        String key = w.str("nameKey");
+        if (!key.isEmpty()) {
+            String translated = Component.translatable(key).getString();
+            if (!translated.equals(key)) name = translated;
+        }
+        if (name.isEmpty()) name = w.str("displayName");
         if (name.isEmpty()) name = stack.getHoverName().getString();
         StringBuilder sb = new StringBuilder(name);
         for (String spec : w.stringList("enchants")) {

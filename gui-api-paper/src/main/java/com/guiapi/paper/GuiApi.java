@@ -266,6 +266,11 @@ public final class GuiApi {
 
     /** player -> (key id -> GLFW key code) */
     private final Map<UUID, Map<String, Integer>> keyBindings = new ConcurrentHashMap<>();
+    /** player -> (key id -> registered shortcut metadata) */
+    private final Map<UUID, Map<String, RegisteredKey>> registeredKeys = new ConcurrentHashMap<>();
+
+    /** A shortcut that shows up in the vanilla Controls screen and can be rebound by the player. */
+    private record RegisteredKey(String label, Integer defaultCode) {}
 
     /**
      * Binds a shortcut on the player's client. {@code keyCode} is a GLFW key code
@@ -303,6 +308,44 @@ public final class GuiApi {
         channel.send(player, json.toString());
     }
 
+    // ------------------------------------------------- rebindable (controls-screen) keys
+
+    /**
+     * Registers a shortcut that appears in the vanilla Controls screen, where the player can
+     * rebind it. The setting is persisted in the client's {@code options.txt} and survives
+     * reconnects, so unlike {@link #bindKey} this does not need to be re-sent on every join.
+     *
+     * @param keyId         logical id, also used with {@link #addKeyHandler}; plugin-prefixed
+     * @param label         display name shown in the Controls screen
+     * @param defaultKeyCode GLFW key code for the default binding, or {@code null}/{@code <= 0}
+     *                       to leave it unbound until the player sets one
+     */
+    public void registerKey(Player player, String keyId, String label, Integer defaultKeyCode) {
+        if (keyId == null || keyId.isEmpty() || label == null) return;
+        registeredKeys.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
+                .put(keyId, new RegisteredKey(label, defaultKeyCode));
+        sendKeyRegistration(player, keyId, label, defaultKeyCode);
+    }
+
+    /** Removes a shortcut previously registered with {@link #registerKey}. */
+    public void unregisterKey(Player player, String keyId) {
+        Map<String, RegisteredKey> keys = registeredKeys.get(player.getUniqueId());
+        if (keys != null) keys.remove(keyId);
+        JsonObject json = Protocol.baseMessage(Protocol.TYPE_UNREGISTER_KEY);
+        json.addProperty("key", keyId);
+        channel.send(player, json.toString());
+    }
+
+    private void sendKeyRegistration(Player player, String keyId, String label, Integer defaultKeyCode) {
+        JsonObject json = Protocol.baseMessage(Protocol.TYPE_REGISTER_KEY);
+        json.addProperty("key", keyId);
+        json.addProperty("label", label);
+        if (defaultKeyCode != null && defaultKeyCode > 0) {
+            json.addProperty("code", defaultKeyCode);
+        }
+        channel.send(player, json.toString());
+    }
+
     /** @return true if the player's client has the GuiApi mod installed and handshook. */
     public boolean isClientSupported(Player player) {
         return supportedClients.containsKey(player.getUniqueId());
@@ -334,6 +377,13 @@ public final class GuiApi {
         Map<String, Integer> bindings = keyBindings.get(player.getUniqueId());
         if (bindings != null) {
             bindings.forEach((keyId, keyCode) -> sendKeyBinding(player, keyId, keyCode));
+        }
+        // rebindable keys are persisted client-side, but a fresh client (or first join)
+        // needs the registration; re-sending is idempotent on the client
+        Map<String, RegisteredKey> registered = registeredKeys.get(player.getUniqueId());
+        if (registered != null) {
+            registered.forEach((keyId, meta) ->
+                    sendKeyRegistration(player, keyId, meta.label(), meta.defaultCode()));
         }
     }
 
@@ -418,6 +468,7 @@ public final class GuiApi {
         sentImages.remove(playerId);
         sentSounds.remove(playerId);
         keyBindings.remove(playerId);
+        registeredKeys.remove(playerId);
         channel.discard(playerId);
     }
 
