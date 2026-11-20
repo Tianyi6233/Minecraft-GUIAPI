@@ -33,6 +33,11 @@
 
 以下均为游戏内实际渲染截图（2560×1368）：
 
+| 演示总览 |
+|:---:|
+| <img src="doc/screenshots/demo.png" width="860" /> |
+| 十一类控件同时打开：文本、图片、物品、按钮、滑块、滚动条、下拉、复选框、单选框等 |
+
 | 交易所 | 炸弹猫 |
 |:---:|:---:|
 | <img src="doc/screenshots/exchange.png" width="420" /> | <img src="doc/screenshots/bomb-cat.png" width="420" /> |
