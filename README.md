@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/static/v1?label=MINECRAFT&message=1.20.1%20~%2026.3&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Minecraft 1.20.1 ~ 26.3">
   <img src="https://img.shields.io/static/v1?label=SERVER&message=PAPER&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Server: Paper">
   <img src="https://img.shields.io/static/v1?label=CLIENT&message=FABRIC&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client: Fabric">
-  <img src="https://img.shields.io/static/v1?label=VERSION&message=1.6.0&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.6.0">
+  <img src="https://img.shields.io/static/v1?label=VERSION&message=1.7.2&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.7.2">
 </p>
 
 - - -
@@ -24,7 +24,7 @@
 - **实时刷新**：窗口打开后可用 `updateWidget` 改文字、数值、选中项、选项列表、可见性
 - **布局**：百分比布局、负边距、等比缩放、横向拖动组、位置补间动画，全屏界面适配不同分辨率
 - **图片与音效**：服务端动态注册 PNG / OGG，客户端自动打包资源包，按 id 播放，支持循环 BGM 与音量调节
-- **快捷键**：插件可绑定玩家不可见的快捷键；客户端模组也可注册显示在原版「按键设置」里的可改键（1.6.0+），冲突自动提示
+- **快捷键**：`bindKey` 绑定玩家不可见的快捷键；`registerKey` 下发可改键的快捷键，直接显示在原版「按键设置 → GuiApi」分类里（1.7.1+），玩家可自行改键并持久化，冲突自动提示
 - **字体**：可给窗口指定字体，`guiapi:sysfont` 使用玩家本机的 Windows 系统字体
 
 > 细节全部在 [开发文档](开发文档.md)，分册版见 [doc/](doc/README.md)。
@@ -57,36 +57,36 @@
 
 | 组件 | 位置 | 说明 |
 |---|---|---|
-| `guiapi-client-1.6.0.jar` | `.minecraft/mods` | Fabric 客户端，另需 [Fabric API](https://modrinth.com/mod/fabric-api) |
-| `gui-api-paper-1.7.0.jar` | 服务端 `plugins/` | 核心插件，其他 GUI 插件 `depend: [GuiApi]` |
+| `guiapi-client-1.7.2.jar` | `.minecraft/mods` | Fabric 客户端，另需 [Fabric API](https://modrinth.com/mod/fabric-api) |
+| `gui-api-paper-1.8.0.jar` | 服务端 `plugins/` | 核心插件，其他 GUI 插件 `depend: [GuiApi]` |
 
-**客户端按 Minecraft 版本各出一个 jar**（文件名相同，按版本目录区分）：
+**客户端按 Minecraft 版本各出一个 jar**（Release 里以 `-mc<版本>` 区分）：
 
 | Minecraft | 客户端 jar | Java |
 |---|---|---|
-| 1.20.1 | `versions/1.20.1/build/libs/guiapi-client-1.6.0.jar` | 17+ |
+| 1.20.1 | `versions/1.20.1/build/libs/guiapi-client-1.7.2.jar` | 17+ |
 | 1.21 / 1.21.1 | `versions/1.21/`、`versions/1.21.1/` | 21+ |
 | 1.21.4 | `versions/1.21.4/` | 21+ |
 | 1.21.5 | `versions/1.21.5/` | 21+ |
 | 1.21.8 | `versions/1.21.8/` | 21+ |
 | 1.21.9 / 1.21.10 / 1.21.11 | `versions/1.21.9/`、`versions/1.21.10/`、`versions/1.21.11/` | 21+ |
 | 26.1 / 26.1.1 | `versions/26.1/`、`versions/26.1.1/` | 25+ |
-| 26.1.2 | `build/libs/guiapi-client-1.6.0.jar` | 25+ |
+| 26.1.2 | `build/libs/guiapi-client-1.7.2.jar` | 25+ |
 | 26.2 | `versions/26.2/` | 25+ |
 | 26.3 | `versions/26.3/` | 25+ |
 
-**服务端只有一个 jar**：编译目标是 Paper 1.20.1 的 API、Java 17 字节码，`api-version: '1.20'`，所以同一个 `gui-api-paper-1.7.0.jar` 可以直接跑在 **Paper 1.20.1 到最新版** 上（Paper 官方 1.20.1+ 都接受这个 api-version）。Fabric Loader 不限版本。玩家没装客户端模组时，服务端会通过握手检测到，可以提示或拒绝。
+**服务端只有一个 jar**：编译目标是 Paper 1.20.1 的 API、Java 17 字节码，`api-version: '1.20'`，所以同一个 `gui-api-paper-1.8.0.jar` 可以直接跑在 **Paper 1.20.1 到最新版** 上（Paper 官方 1.20.1+ 都接受这个 api-version）。Fabric Loader 不限版本。玩家没装客户端模组时，服务端会通过握手检测到，可以提示或拒绝。
 
 ## 发行产物
 
-`release/1.6.0/` 提供本版本的预编译产物：
+预编译产物见 [Releases](https://github.com/Tianyi6233/Minecraft-GUIAPI/releases/tag/v1.8.0)：
 
 | 文件 | 说明 |
 |---|---|
-| `guiapi-client-1.6.0.jar` | Fabric 客户端，**编译自 Minecraft 26.1.2** |
-| `gui-api-paper-1.7.0.jar` | Paper 服务端，兼容 1.20.1+ |
+| `guiapi-client-1.7.2-mc<版本>.jar` | Fabric 客户端，按 Minecraft 版本分包（1.20.1 ~ 26.3，共 14 个） |
+| `gui-api-paper-1.8.0.jar` | Paper 服务端，兼容 1.20.1+ |
 
-> 客户端产物只提供 **26.1.2** 一份；其他 Minecraft 版本请在 `gui-client-fabric/versions/<版本>/` 下自行执行 `.\gradlew build`，编译方法见 [开发文档](开发文档.md) 第 3 节。服务端 jar 全版本通用，不需要按版本编译。
+> 仓库内 `release/1.6.0/` 为历史版本产物，下载请以上面的 Release 为准。也可以按下面的「构建」自行编译任意版本。
 
 ## 快速开始
 
@@ -134,7 +134,7 @@ cd gui-client-fabric
 gradlew build
 ```
 
-产物：`gui-api-paper/target/gui-api-paper-1.7.0.jar`（一个 jar 兼容 Paper 1.20.1+）、`gui-client-fabric/build/libs/guiapi-client-1.6.0.jar`（26.1.2 客户端）。
+产物：`gui-api-paper/target/gui-api-paper-1.8.0.jar`（一个 jar 兼容 Paper 1.20.1+）、`gui-client-fabric/build/libs/guiapi-client-1.7.2.jar`（26.1.2 客户端）。
 
 其他 Minecraft 版本的客户端各自独立构建：
 
