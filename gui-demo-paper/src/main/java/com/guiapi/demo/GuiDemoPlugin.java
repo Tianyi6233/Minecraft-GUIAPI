@@ -52,7 +52,7 @@ public final class GuiDemoPlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        api.bindKey(player, Protocol.KEY_DEMO, KEY_N);
+        api.registerKey(player, Protocol.KEY_DEMO, "GuiApi 演示", KEY_N);
     }
 
     @Override
