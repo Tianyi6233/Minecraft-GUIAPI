@@ -10,6 +10,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.PreeditEvent;
+import net.minecraft.client.gui.components.IMEPreeditOverlay;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FontDescription;
@@ -19,7 +21,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The single screen that renders every server-driven window and dispatches input to widgets.
@@ -42,6 +47,9 @@ public final class GuiWindowScreen extends Screen {
     private static final int COL_WIDGET = 0xFF3C3F47;
     private static final int COL_WIDGET_HOVER = 0xFF565B66;
     private static final int COL_WIDGET_BORDER = 0xFF101014;
+
+    /** 输入法组合文本浮层，仅在当前输入框聚焦时存在。 */
+    private IMEPreeditOverlay preeditOverlay;
 
     // ---- Minecraft-style palette ----
     private static final int MC_WINDOW_BG = 0xC0101010;
@@ -76,6 +84,8 @@ public final class GuiWindowScreen extends Screen {
         long lastScrollSendAt;
         WidgetModel focusedText;
         int textCursor;
+        /** Shift 选择起点；-1 表示没有选区。 */
+        int textSelAnchor = -1;
         String expandedDropdown;
         int dropdownScroll;
         WidgetModel hovered;
@@ -88,8 +98,13 @@ public final class GuiWindowScreen extends Screen {
         /** Widget whose click is deferred until the mouse is released without dragging. */
         String pendingClick;
         int dragStartX;
+        int dragStartY;
         int dragStartOffset;
         boolean dragMoved;
+        /** Animated targets for wheel and page scrolling; direct dragging writes groupOffsets. */
+        final Map<String, Integer> groupTargetOffsets = new HashMap<>();
+        final Map<String, Integer> groupAnimationFrom = new HashMap<>();
+        final Map<String, Long> groupAnimationStartedAt = new HashMap<>();
         /** Smoothed render position per widget id, so layout changes glide instead of snapping. */
         final java.util.Map<String, PosAnim> animPos = new java.util.HashMap<>();
         /** 上一帧渲染时窗口的位置：窗口整体移动时把控件动画位置同步平移，避免控件拖尾。 */
@@ -210,11 +225,107 @@ public final class GuiWindowScreen extends Screen {
         return base + groupOffset(ws, w);
     }
 
-    /** Current horizontal scroll of the widget's drag group (0 when it has none). */
+    /** Current horizontal scroll of the widget's drag group (0 for vertical groups). */
     private static int groupOffset(WindowState ws, WidgetModel w) {
         String group = w.str("dragGroup");
-        if (group.isEmpty()) return 0;
+        if (group.isEmpty() || isVerticalGroup(group)) return 0;
         return ws.groupOffsets.getOrDefault(group, 0);
+    }
+
+    private static boolean isVerticalGroup(String group) {
+        return group.startsWith("v:");
+    }
+
+    private WidgetModel verticalScrollbar(WindowState ws, String group) {
+        return isVerticalGroup(group) ? ws.model.widget(group.substring(2) + "_scroll") : null;
+    }
+
+    private int groupBottom(WindowState ws, String group) {
+        int max = Integer.MIN_VALUE;
+        for (WidgetModel widget : ws.model.widgets) {
+            if (!group.equals(widget.str("dragGroup"))) continue;
+            max = Math.max(max, baseWidgetY(ws, widget) + widgetH(ws, widget));
+        }
+        return max == Integer.MIN_VALUE ? contentY(ws) : max;
+    }
+
+    private int verticalMinOffset(WindowState ws, String group) {
+        WidgetModel scrollbar = verticalScrollbar(ws, group);
+        if (scrollbar == null) return 0;
+        int viewportBottom = baseWidgetY(ws, scrollbar) + widgetH(ws, scrollbar);
+        return Math.min(0, viewportBottom - groupBottom(ws, group));
+    }
+
+    private int clampVerticalOffset(WindowState ws, String group, int value) {
+        return Math.max(verticalMinOffset(ws, group), Math.min(0, value));
+    }
+
+    void syncVerticalScrollFromServer(WindowState ws, WidgetModel scrollbar) {
+        for (WidgetModel widget : ws.model.widgets) {
+            String group = widget.str("dragGroup");
+            if (!isVerticalGroup(group) || scrollbar != verticalScrollbar(ws, group)) continue;
+            int target = (int) Math.round(verticalMinOffset(ws, group) * scrollbar.dbl("value") / 100.0);
+            int actual = ws.groupOffsets.getOrDefault(group, 0);
+            if (target == actual) {
+                ws.groupTargetOffsets.remove(group);
+                ws.groupAnimationFrom.remove(group);
+                ws.groupAnimationStartedAt.remove(group);
+                continue;
+            }
+            ws.groupAnimationFrom.put(group, actual);
+            ws.groupTargetOffsets.put(group, target);
+            ws.groupAnimationStartedAt.put(group, System.currentTimeMillis());
+            return;
+        }
+    }
+
+    private void scrollVerticalBy(WindowState ws, String group, int delta) {
+        int current = ws.groupTargetOffsets.getOrDefault(group,
+                ws.groupOffsets.getOrDefault(group, 0));
+        int target = clampVerticalOffset(ws, group, current + delta);
+        int actual = ws.groupOffsets.getOrDefault(group, 0);
+        if (target == actual && !ws.groupTargetOffsets.containsKey(group)) return;
+        ws.groupAnimationFrom.put(group, actual);
+        ws.groupTargetOffsets.put(group, target);
+        ws.groupAnimationStartedAt.put(group, System.currentTimeMillis());
+        updateVerticalScrollModel(ws, group, target);
+        sendVerticalScroll(ws, group);
+    }
+
+    private void tickVerticalGroups(WindowState ws) {
+        if (ws.groupTargetOffsets.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        for (String group : new ArrayList<>(ws.groupTargetOffsets.keySet())) {
+            int from = ws.groupAnimationFrom.getOrDefault(group, 0);
+            int target = ws.groupTargetOffsets.get(group);
+            long started = ws.groupAnimationStartedAt.getOrDefault(group, now);
+            float t = Math.min(1.0f, (now - started) / 140.0f);
+            float eased = 1.0f - (float) Math.pow(1.0f - t, 3);
+            int value = Math.round(from + (target - from) * eased);
+            ws.groupOffsets.put(group, value);
+            if (t >= 1.0f) {
+                ws.groupOffsets.put(group, target);
+                ws.groupTargetOffsets.remove(group);
+                ws.groupAnimationFrom.remove(group);
+                ws.groupAnimationStartedAt.remove(group);
+            }
+            updateVerticalScrollModel(ws, group, value);
+        }
+    }
+
+    private void updateVerticalScrollModel(WindowState ws, String group, int offset) {
+        WidgetModel scrollbar = verticalScrollbar(ws, group);
+        if (scrollbar == null) return;
+        int maxScroll = -verticalMinOffset(ws, group);
+        double value = maxScroll <= 0 ? 0 : Math.max(0, Math.min(100, -offset * 100.0 / maxScroll));
+        scrollbar.merge(numProp("value", value));
+    }
+
+    private void sendVerticalScroll(WindowState ws, String group) {
+        WidgetModel scrollbar = verticalScrollbar(ws, group);
+        if (scrollbar != null) {
+            ClientNet.sendChange(ws.model.id, scrollbar.id(), scrollbar.dbl("value"));
+        }
     }
 
     /** Leftmost base position of every widget in the group, ignoring the current scroll. */
@@ -239,12 +350,18 @@ public final class GuiWindowScreen extends Screen {
         return max == Integer.MIN_VALUE ? winX(ws) + winW(ws) : max;
     }
 
-    private int widgetY(WindowState ws, WidgetModel w) {
+    private int baseWidgetY(WindowState ws, WidgetModel w) {
         int oy = contentY(ws);
         if (w.has("yPct")) {
             return oy + (int) Math.round(contentH(ws) * w.dbl("yPct") / 100.0) + w.y();
         }
         return w.y() < 0 ? oy + contentH(ws) / 2 + w.y() : oy + w.y();
+    }
+
+    private int widgetY(WindowState ws, WidgetModel w) {
+        String group = w.str("dragGroup");
+        return baseWidgetY(ws, w)
+                + (isVerticalGroup(group) ? ws.groupOffsets.getOrDefault(group, 0) : 0);
     }
 
     /** Widget width; negative w means "right edge minus margin". */
@@ -339,6 +456,7 @@ public final class GuiWindowScreen extends Screen {
         this.textStyle = fontStyle(ws.model.font);
         this.textSnapScale = uiScale;
         int px = winX(ws), py = winY(ws), w = winW(ws), h = winH(ws);
+        tickVerticalGroups(ws);
         int th = titleH(ws);
         boolean mc = "minecraft".equals(ws.model.style);
 
@@ -392,10 +510,33 @@ public final class GuiWindowScreen extends Screen {
         g.pose().pushMatrix();
         g.pose().scale(uiScale, uiScale);
         for (WidgetModel widget : ws.model.widgets) {
-            renderWidget(g, ws, widget, mouseX, mouseY);
+            if (!isVerticalViewportWidget(ws, widget)) renderWidget(g, ws, widget, mouseX, mouseY);
+        }
+        g.disableScissor();
+        for (String group : verticalGroups(ws)) {
+            WidgetModel viewport = verticalScrollbar(ws, group);
+            int viewportY = baseWidgetY(ws, viewport);
+            g.enableScissor(toScreen(winX(ws)), toScreen(viewportY),
+                    toScreen(winX(ws) + winW(ws)), toScreen(viewportY + widgetH(ws, viewport)));
+            for (WidgetModel widget : ws.model.widgets) {
+                if (group.equals(widget.str("dragGroup"))) renderWidget(g, ws, widget, mouseX, mouseY);
+            }
+            g.disableScissor();
         }
         g.pose().popMatrix();
-        g.disableScissor();
+    }
+
+    private boolean isVerticalViewportWidget(WindowState ws, WidgetModel w) {
+        return verticalScrollbar(ws, w.str("dragGroup")) != null;
+    }
+
+    private List<String> verticalGroups(WindowState ws) {
+        List<String> groups = new ArrayList<>();
+        for (WidgetModel widget : ws.model.widgets) {
+            String group = widget.str("dragGroup");
+            if (verticalScrollbar(ws, group) != null && !groups.contains(group)) groups.add(group);
+        }
+        return groups;
     }
 
     private void renderWidget(GuiGraphicsExtractor g, WindowState ws, WidgetModel w, int mouseX, int mouseY) {
@@ -403,6 +544,12 @@ public final class GuiWindowScreen extends Screen {
         if (w.has("visible") && !w.bool("visible")) return;
         int targetX = widgetX(ws, w), targetY = widgetY(ws, w);
         int ww = widgetW(ws, w), hh = widgetH(ws, w);
+        WidgetModel viewport = verticalScrollbar(ws, w.str("dragGroup"));
+        if (viewport != null) {
+            int viewportY = baseWidgetY(ws, viewport);
+            int viewportBottom = viewportY + widgetH(ws, viewport);
+            if (targetY + hh <= viewportY || targetY >= viewportBottom) return;
+        }
         // 控件在布局变化时平滑滑到新位置（手牌重排、出牌等），避免生硬跳变
         int[] pos = animPos(ws, w, targetX, targetY);
         int x = pos[0], y = pos[1];
@@ -619,11 +766,22 @@ public final class GuiWindowScreen extends Screen {
                 int maxW = Math.max(8, ww - 10);
                 String full = w.str("text");
                 int cursor = focused ? Math.min(ws.textCursor, full.length()) : full.length();
+                int selFrom = focused ? selMin(ws, cursor) : cursor;
+                int selTo = focused ? selMax(ws, cursor) : cursor;
+                // 向左扩展选区时，左侧端点也要保持在可视范围内
+                int scrollTo = Math.min(cursor, selFrom);
                 int start = 0;
-                while (start < cursor && textWidth(full.substring(start, cursor)) > maxW - 2) start++;
+                while (start < scrollTo && textWidth(full.substring(start, scrollTo)) > maxW - 2) start++;
                 String visible = full.substring(start);
                 while (!visible.isEmpty() && textWidth(visible) > maxW) {
                     visible = visible.substring(0, visible.length() - 1);
+                }
+                int selA = Math.max(selFrom, start);
+                int selB = Math.min(selTo, start + visible.length());
+                if (selB > selA) {
+                    int sx = x + 5 + textWidth(full.substring(start, selA));
+                    int ex = x + 5 + textWidth(full.substring(start, selB));
+                    g.fill(sx, ty - 1, ex, ty + 9, mc ? 0xFF9BB8E8 : 0xFF2F5A9E);
                 }
                 if (full.isEmpty()) {
                     String hint = w.str("placeholder");
@@ -640,6 +798,10 @@ public final class GuiWindowScreen extends Screen {
                             g.fill(caretX, ty - 1, caretX + 1, ty + 9, color);
                         }
                     }
+                }
+                if (focused && preeditOverlay != null) {
+                    preeditOverlay.updateInputPosition(x + 5, ty);
+                    g.setPreeditOverlay(preeditOverlay);
                 }
                 if (inside(mouseX, mouseY, x, y, ww, hh)) hover(ws, w, x, y);
             }
@@ -842,6 +1004,14 @@ public final class GuiWindowScreen extends Screen {
         int x = widgetX(ws, w), y = widgetY(ws, w);
         int ww = widgetW(ws, w), hh = widgetH(ws, w);
         String winId = ws.model.id;
+        WidgetModel viewport = verticalScrollbar(ws, w.str("dragGroup"));
+        if (viewport != null) {
+            int viewportY = baseWidgetY(ws, viewport);
+            int viewportBottom = viewportY + widgetH(ws, viewport);
+            // The scissor hides overflowing content, so its invisible area must not receive clicks.
+            if (my < viewportY || my >= viewportBottom) return false;
+            if (y + hh <= viewportY || y >= viewportBottom) return false;
+        }
         // widgets in a drag group start a potential drag; the click fires on release if the
         // pointer never moved, so dragging a wide card row does not toggle a selection
         String group = w.str("dragGroup");
@@ -849,6 +1019,7 @@ public final class GuiWindowScreen extends Screen {
             ws.dragGroup = group;
             ws.pendingClick = w.id();
             ws.dragStartX = mx;
+            ws.dragStartY = my;
             ws.dragStartOffset = ws.groupOffsets.getOrDefault(group, 0);
             ws.dragMoved = false;
             return true;
@@ -916,7 +1087,9 @@ public final class GuiWindowScreen extends Screen {
                     int idx = 0;
                     while (idx < text.length() && textWidth(text.substring(0, idx + 1)) <= rel) idx++;
                     ws.textCursor = idx;
-                    Minecraft.getInstance().textInputManager().onTextInputFocusChange(true);
+                    ws.textSelAnchor = -1;
+                    preeditOverlay = null;
+                    Minecraft.getInstance().onTextInputFocusChange(this, true);
                     return true;
                 }
             }
@@ -965,6 +1138,19 @@ public final class GuiWindowScreen extends Screen {
         int my = toVirtual(event.y());
         for (WindowState ws : GuiManager.windows) {
             if (ws.dragGroup != null) {
+                if (isVerticalGroup(ws.dragGroup)) {
+                    int shift = my - ws.dragStartY;
+                    if (Math.abs(shift) > 3) ws.dragMoved = true;
+                    if (ws.dragMoved) {
+                        ws.groupTargetOffsets.remove(ws.dragGroup);
+                        ws.groupAnimationFrom.remove(ws.dragGroup);
+                        ws.groupAnimationStartedAt.remove(ws.dragGroup);
+                        int wanted = clampVerticalOffset(ws, ws.dragGroup, ws.dragStartOffset + shift);
+                        ws.groupOffsets.put(ws.dragGroup, wanted);
+                        updateVerticalScrollModel(ws, ws.dragGroup, wanted);
+                    }
+                    return true;
+                }
                 int shift = mx - ws.dragStartX;
                 if (Math.abs(shift) > 3) ws.dragMoved = true;
                 if (ws.dragMoved) {
@@ -998,6 +1184,11 @@ public final class GuiWindowScreen extends Screen {
             if (ws.dragGroup != null) {
                 if (!ws.dragMoved && ws.pendingClick != null) {
                     ClientNet.sendClick(ws.model.id, ws.pendingClick);
+                } else if (ws.dragMoved && isVerticalGroup(ws.dragGroup)) {
+                    WidgetModel scrollbar = verticalScrollbar(ws, ws.dragGroup);
+                    if (scrollbar != null) {
+                        ClientNet.sendChange(ws.model.id, scrollbar.id(), scrollbar.dbl("value"));
+                    }
                 }
                 ws.dragGroup = null;
                 ws.pendingClick = null;
@@ -1041,15 +1232,38 @@ public final class GuiWindowScreen extends Screen {
                 if (w.has("visible") && !w.bool("visible")) continue;
                 int bx = widgetX(ws, w), by = widgetY(ws, w);
                 if (!inside(vx, vy, bx, by, widgetW(ws, w), widgetH(ws, w))) continue;
-                double next = Math.max(0, Math.min(100,
-                        w.dbl("value") - Math.signum(verticalAmount) * 5));
-                if (next == w.dbl("value")) return true;
-                w.merge(numProp("value", next));
-                ClientNet.sendChange(ws.model.id, w.id(), next);
-                return true;
+                return scrollWithWheel(ws, w, verticalAmount);
+            }
+        }
+        // 指针在窗口内容区时，滚轮同样驱动该窗口的滚动条（从最上层窗口开始）。
+        // 隐藏滚动条用于无滚动条的列表，也能接收滚轮事件。
+        for (int i = GuiManager.windows.size() - 1; i >= 0; i--) {
+            WindowState ws = GuiManager.windows.get(i);
+            if (!inside(vx, vy, winX(ws), winY(ws), winW(ws), winH(ws))) continue;
+            for (WidgetModel w : ws.model.widgets) {
+                if (!"scrollbar".equals(w.type())) continue;
+                return scrollWithWheel(ws, w, verticalAmount);
             }
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
+    private boolean scrollWithWheel(WindowState ws, WidgetModel w, double verticalAmount) {
+        if (verticalAmount == 0) return false;
+        for (WidgetModel widget : ws.model.widgets) {
+            String group = widget.str("dragGroup");
+            if (isVerticalGroup(group) && w == verticalScrollbar(ws, group)) {
+                scrollVerticalBy(ws, group, (int) Math.round(verticalAmount * 26));
+                return true;
+            }
+        }
+        double next = Math.max(0, Math.min(100,
+                w.dbl("value") - Math.signum(verticalAmount) * 5));
+        if (next != w.dbl("value")) {
+            w.merge(numProp("value", next));
+            ClientNet.sendChange(ws.model.id, w.id(), next);
+        }
+        return true;
     }
 
     @Override
@@ -1059,9 +1273,35 @@ public final class GuiWindowScreen extends Screen {
             if (w == null) continue;
             String text = w.str("text");
             int cursor = Math.min(ws.textCursor, text.length());
+            boolean shift = event.hasShiftDown();
+            int selFrom = selMin(ws, cursor);
+            int selTo = selMax(ws, cursor);
+
+            // 使用原版判定，自动适配 macOS 的 Command 键和输入法冲突修复模组
+            if (event.isSelectAll()) {
+                ws.textSelAnchor = 0;
+                ws.textCursor = text.length();
+                return true;
+            }
+            if (event.isCopy()) {
+                copySelection(ws, w);
+                return true;
+            }
+            if (event.isPaste()) {
+                replaceSelection(ws, w, sanitizePaste(Minecraft.getInstance().keyboardHandler.getClipboard()));
+                return true;
+            }
+            if (event.isCut()) {
+                copySelection(ws, w);
+                replaceSelection(ws, w, "");
+                return true;
+            }
+
             switch (event.key()) {
                 case GLFW.GLFW_KEY_BACKSPACE -> {
-                    if (cursor > 0) {
+                    if (selTo > selFrom) {
+                        replaceSelection(ws, w, "");
+                    } else if (cursor > 0) {
                         w.merge(stringProp("text", text.substring(0, cursor - 1) + text.substring(cursor)));
                         ws.textCursor = cursor - 1;
                         sendLiveText(ws, w);
@@ -1069,7 +1309,9 @@ public final class GuiWindowScreen extends Screen {
                     return true;
                 }
                 case GLFW.GLFW_KEY_DELETE -> {
-                    if (cursor < text.length()) {
+                    if (selTo > selFrom) {
+                        replaceSelection(ws, w, "");
+                    } else if (cursor < text.length()) {
                         w.merge(stringProp("text", text.substring(0, cursor) + text.substring(cursor + 1)));
                         sendLiveText(ws, w);
                     }
@@ -1080,18 +1322,22 @@ public final class GuiWindowScreen extends Screen {
                     return true;
                 }
                 case GLFW.GLFW_KEY_LEFT -> {
+                    startSelection(ws, cursor, shift);
                     ws.textCursor = Math.max(0, cursor - 1);
                     return true;
                 }
                 case GLFW.GLFW_KEY_RIGHT -> {
+                    startSelection(ws, cursor, shift);
                     ws.textCursor = Math.min(text.length(), cursor + 1);
                     return true;
                 }
                 case GLFW.GLFW_KEY_HOME -> {
+                    startSelection(ws, cursor, shift);
                     ws.textCursor = 0;
                     return true;
                 }
                 case GLFW.GLFW_KEY_END -> {
+                    startSelection(ws, cursor, shift);
                     ws.textCursor = text.length();
                     return true;
                 }
@@ -1115,18 +1361,32 @@ public final class GuiWindowScreen extends Screen {
         for (WindowState ws : GuiManager.windows) {
             WidgetModel w = ws.focusedText;
             if (w == null) continue;
+            // 部分输入法会吞掉 Ctrl+字母的 keyPressed，只留下控制字符；这里做兜底
+            switch (event.codepoint()) {
+                case 1 -> {
+                    ws.textSelAnchor = 0;
+                    ws.textCursor = w.str("text").length();
+                    return true;
+                }
+                case 3 -> {
+                    copySelection(ws, w);
+                    return true;
+                }
+                case 22 -> {
+                    replaceSelection(ws, w, sanitizePaste(Minecraft.getInstance().keyboardHandler.getClipboard()));
+                    return true;
+                }
+                case 24 -> {
+                    copySelection(ws, w);
+                    replaceSelection(ws, w, "");
+                    return true;
+                }
+                default -> { }
+            }
             if (event.codepoint() < 32 || event.codepoint() == 127) return true;
             String typed = event.codepointAsString();
             if (typed.isEmpty()) return true;
-            String text = w.str("text");
-            int max = Math.max(1, w.num("maxLength"));
-            int room = max - text.length();
-            if (room <= 0) return true;
-            if (typed.length() > room) typed = typed.substring(0, room);
-            int cursor = Math.min(ws.textCursor, text.length());
-            w.merge(stringProp("text", text.substring(0, cursor) + typed + text.substring(cursor)));
-            ws.textCursor = cursor + typed.length();
-            sendLiveText(ws, w);
+            replaceSelection(ws, w, typed);
             return true;
         }
         return super.charTyped(event);
@@ -1137,8 +1397,62 @@ public final class GuiWindowScreen extends Screen {
         WidgetModel w = ws.focusedText;
         if (w == null) return;
         ws.focusedText = null;
-        Minecraft.getInstance().textInputManager().onTextInputFocusChange(false);
+        ws.textSelAnchor = -1;
+        preeditOverlay = null;
+        Minecraft.getInstance().onTextInputFocusChange(this, false);
         ClientNet.sendText(ws.model.id, w.id(), w.str("text"));
+    }
+
+    /** Shift 开始选区时记住起点；不按 Shift 则取消选区。 */
+    private static void startSelection(WindowState ws, int cursor, boolean shift) {
+        if (shift) {
+            if (ws.textSelAnchor < 0) ws.textSelAnchor = cursor;
+        } else {
+            ws.textSelAnchor = -1;
+        }
+    }
+
+    private static int selMin(WindowState ws, int cursor) {
+        return ws.textSelAnchor < 0 ? cursor : Math.min(ws.textSelAnchor, cursor);
+    }
+
+    private static int selMax(WindowState ws, int cursor) {
+        return ws.textSelAnchor < 0 ? cursor : Math.max(ws.textSelAnchor, cursor);
+    }
+
+    /** 把当前选区写入系统剪贴板；没有选区时什么也不做。 */
+    private static void copySelection(WindowState ws, WidgetModel w) {
+        String text = w.str("text");
+        int cursor = Math.min(ws.textCursor, text.length());
+        int from = selMin(ws, cursor);
+        int to = selMax(ws, cursor);
+        if (to > from) Minecraft.getInstance().keyboardHandler.setClipboard(text.substring(from, to));
+    }
+
+    /** 用 {@code insert} 覆盖当前选区；空字符串即删除选区。受 maxLength 限制。 */
+    private void replaceSelection(WindowState ws, WidgetModel w, String insert) {
+        String text = w.str("text");
+        int cursor = Math.min(ws.textCursor, text.length());
+        int from = selMin(ws, cursor);
+        int to = selMax(ws, cursor);
+        int max = Math.max(1, w.num("maxLength"));
+        int room = max - (text.length() - (to - from));
+        if (insert.length() > room) insert = insert.substring(0, Math.max(0, room));
+        w.merge(stringProp("text", text.substring(0, from) + insert + text.substring(to)));
+        ws.textCursor = from + insert.length();
+        ws.textSelAnchor = -1;
+        sendLiveText(ws, w);
+    }
+
+    /** 单行输入框粘贴时丢弃换行和控制字符。 */
+    private static String sanitizePaste(String value) {
+        if (value == null || value.isEmpty()) return "";
+        StringBuilder out = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c >= 32 && c != 127) out.append(c);
+        }
+        return out.toString();
     }
 
     /** Fields marked {@code live} report every keystroke so the server can filter in real time. */
@@ -1154,9 +1468,17 @@ public final class GuiWindowScreen extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft.getInstance().textInputManager().onTextInputFocusChange(false);
+        preeditOverlay = null;
+        Minecraft.getInstance().onTextInputFocusChange(this, false);
         GuiManager.closeAllFromScreen();
         super.onClose();
+    }
+
+    /** 输入法组合文本交给原版浮层绘制，候选窗口位置随之跟随输入框。 */
+    @Override
+    public boolean preeditUpdated(PreeditEvent event) {
+        this.preeditOverlay = event == null ? null : new IMEPreeditOverlay(event, this.font, 10);
+        return true;
     }
 
     // ---------------------------------------------------------------- helpers
@@ -1228,6 +1550,12 @@ public final class GuiWindowScreen extends Screen {
      * 拖动整排手牌时不做插值，否则会拖泥带水。
      */
     private int[] animPos(WindowState ws, WidgetModel w, int tx, int ty) {
+        // Vertical groups already animate one shared offset; per-widget interpolation would
+        // apply a second, frame-dependent delay and make the rows move out of sync.
+        if (isVerticalGroup(w.str("dragGroup"))) {
+            ws.animPos.remove(w.id());
+            return new int[]{tx, ty};
+        }
         PosAnim a = ws.animPos.get(w.id());
         if (a == null) {
             a = new PosAnim();
