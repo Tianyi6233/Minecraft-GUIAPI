@@ -41,7 +41,7 @@
 | 交易所 | 炸弹猫 |
 |:---:|:---:|
 | <img src="doc/screenshots/exchange.png" width="420" /> | <img src="doc/screenshots/bomb-cat.png" width="420" /> |
-| 拍卖行商品列表、搜索、翻页（共 30 页）与购买确认 | 卡牌式布局与物品栏组合 |
+| 拍卖行商品列表、搜索、翻页 | 卡牌式布局与物品栏组合 |
 
 | 自定义菜单 |
 |:---:|
