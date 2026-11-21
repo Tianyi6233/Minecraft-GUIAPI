@@ -7,12 +7,18 @@ import net.minecraft.client.Options;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * Server-registered, player-rebindable shortcuts.
@@ -40,7 +46,65 @@ public final class RegisteredKeys {
         KeyMapping mapping = new KeyMapping(label, code, CATEGORY);
         allMappings().put(mapping.getName(), mapping);
         addToOptions(mapping);
+        // The player may have rebound this shortcut on a previous session; the vanilla
+        // Options loader only runs once at startup, so a KeyMapping created at runtime
+        // would otherwise fall back to the default code. Read the saved value back.
+        restoreSavedBinding(mapping);
         BY_ID.put(keyId, mapping);
+    }
+
+    /**
+     * Reads the player's previously saved binding for this mapping from {@code options.txt}
+     * and applies it. Falls back silently to the default code if nothing is saved or the
+     * file cannot be read (e.g. read-only game directory).
+     *
+     * <p>{@code InputConstants} and its {@code getKey(String)} live in different packages
+     * across MC versions, so the lookup is done reflectively.</p>
+     */
+    private static void restoreSavedBinding(KeyMapping mapping) {
+        try {
+            File optionsFile = new File(Minecraft.getInstance().gameDirectory, "options.txt");
+            if (!optionsFile.exists()) return;
+            Properties props = new Properties();
+            // Minecraft writes options.txt as UTF-8; Java Properties defaults to ISO-8859-1,
+            // which garbles non-ASCII key names (e.g. "key_打开主菜单") and makes the lookup miss.
+            try (FileInputStream in = new FileInputStream(optionsFile)) {
+                props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+            }
+            String saved = props.getProperty("key_" + mapping.getName());
+            if (saved == null || saved.isBlank()) return;
+            Class<?> inputConstants = findInputConstantsClass();
+            if (inputConstants == null) return;
+            Object key = inputConstants.getMethod("getKey", String.class).invoke(null, saved);
+            Method setKey = mapping.getClass().getMethod("setKey", key.getClass());
+            setKey.invoke(mapping, key);
+            // setKey() only updates the mapping's key field, which is what the Controls screen
+            // displays. The actual key->KeyMapping lookup table used for input detection is a
+            // static map that is only rebuilt by KeyMapping.resetMapping() (normally called by
+            // the Controls screen). Without it, the old default key is still the one that fires.
+            try {
+                Method resetMapping = KeyMapping.class.getMethod("resetMapping");
+                resetMapping.invoke(null);
+            } catch (NoSuchMethodException ignored) {
+            }
+        } catch (Exception e) {
+            // ignore - fall back to the default binding
+        }
+    }
+
+    /** Locates {@code InputConstants} across MC versions (package moved after 1.20.4). */
+    private static Class<?> findInputConstantsClass() {
+        String[] candidates = {
+                "com.mojang.blaze3d.platform.InputConstants",
+                "net.minecraft.client.player.InputConstants"
+        };
+        for (String name : candidates) {
+            try {
+                return Class.forName(name);
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        return null;
     }
 
     /** Removes a previously registered shortcut from the Controls screen. */

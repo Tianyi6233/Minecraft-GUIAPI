@@ -276,6 +276,11 @@ public final class GuiApi {
      * Binds a shortcut on the player's client. {@code keyCode} is a GLFW key code
      * (e.g. {@code org.lwjgl.glfw.GLFW.GLFW_KEY_K} = 75); {@code <= 0} removes the binding.
      * The binding is stored per player and re-sent automatically after every reconnect.
+     *
+     * <p>If the client has not handshook yet the packet is not sent here — it will be
+     * replayed by {@link #markReady} once the client reports ready. This avoids dropping
+     * the packet when it is sent from {@code PlayerJoinEvent} before the play channel is
+     * ready (especially on Folia, where the join event runs on the global region).</p>
      */
     public void bindKey(Player player, String keyId, int keyCode) {
         if (keyCode <= 0) {
@@ -283,22 +288,27 @@ public final class GuiApi {
             return;
         }
         keyBindings.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>()).put(keyId, keyCode);
-        sendKeyBinding(player, keyId, keyCode);
+        if (isClientSupported(player)) {
+            runOnPlayerRegion(player, () -> sendKeyBinding(player, keyId, keyCode));
+        }
     }
 
     /** Removes one shortcut bound on the client. */
     public void unbindKey(Player player, String keyId) {
         Map<String, Integer> bindings = keyBindings.get(player.getUniqueId());
         if (bindings != null) bindings.remove(keyId);
-        JsonObject json = Protocol.baseMessage(Protocol.TYPE_UNBIND_KEY);
-        json.addProperty("key", keyId);
-        channel.send(player, json.toString());
+        runOnPlayerRegion(player, () -> {
+            JsonObject json = Protocol.baseMessage(Protocol.TYPE_UNBIND_KEY);
+            json.addProperty("key", keyId);
+            channel.send(player, json.toString());
+        });
     }
 
     /** Removes every shortcut the server bound for this player. */
     public void clearKeys(Player player) {
         keyBindings.remove(player.getUniqueId());
-        channel.send(player, Protocol.baseMessage(Protocol.TYPE_CLEAR_KEYS).toString());
+        runOnPlayerRegion(player, () ->
+                channel.send(player, Protocol.baseMessage(Protocol.TYPE_CLEAR_KEYS).toString()));
     }
 
     private void sendKeyBinding(Player player, String keyId, int keyCode) {
@@ -324,16 +334,20 @@ public final class GuiApi {
         if (keyId == null || keyId.isEmpty() || label == null) return;
         registeredKeys.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
                 .put(keyId, new RegisteredKey(label, defaultKeyCode));
-        sendKeyRegistration(player, keyId, label, defaultKeyCode);
+        if (isClientSupported(player)) {
+            runOnPlayerRegion(player, () -> sendKeyRegistration(player, keyId, label, defaultKeyCode));
+        }
     }
 
     /** Removes a shortcut previously registered with {@link #registerKey}. */
     public void unregisterKey(Player player, String keyId) {
         Map<String, RegisteredKey> keys = registeredKeys.get(player.getUniqueId());
         if (keys != null) keys.remove(keyId);
-        JsonObject json = Protocol.baseMessage(Protocol.TYPE_UNREGISTER_KEY);
-        json.addProperty("key", keyId);
-        channel.send(player, json.toString());
+        runOnPlayerRegion(player, () -> {
+            JsonObject json = Protocol.baseMessage(Protocol.TYPE_UNREGISTER_KEY);
+            json.addProperty("key", keyId);
+            channel.send(player, json.toString());
+        });
     }
 
     private void sendKeyRegistration(Player player, String keyId, String label, Integer defaultKeyCode) {
@@ -373,18 +387,34 @@ public final class GuiApi {
         // a fresh handshake means a fresh client, so cached textures are gone
         sentImages.remove(player.getUniqueId());
         sentSounds.remove(player.getUniqueId());
-        // the client loses server-bound shortcuts on every reconnect, so replay them here
+        // Replay server-bound shortcuts. On Folia the PlayerJoinEvent (where plugins usually
+        // call bindKey) runs on the global region while this method runs on the player's
+        // region, so the binding may be stored AFTER this replay. We replay immediately and
+        // again one tick later to make sure late registrations reach the client.
+        replayKeyBindings(player);
+        player.getScheduler().runDelayed(plugin, task -> replayKeyBindings(player), () -> {}, 1L);
+    }
+
+    /** Re-sends all stored shortcut bindings/registrations for the player to the client. */
+    private void replayKeyBindings(Player player) {
         Map<String, Integer> bindings = keyBindings.get(player.getUniqueId());
         if (bindings != null) {
             bindings.forEach((keyId, keyCode) -> sendKeyBinding(player, keyId, keyCode));
         }
-        // rebindable keys are persisted client-side, but a fresh client (or first join)
-        // needs the registration; re-sending is idempotent on the client
         Map<String, RegisteredKey> registered = registeredKeys.get(player.getUniqueId());
         if (registered != null) {
             registered.forEach((keyId, meta) ->
                     sendKeyRegistration(player, keyId, meta.label(), meta.defaultCode()));
         }
+    }
+
+    /**
+     * Runs {@code action} on the player's region thread. On Paper this is the main thread; on
+     * Folia this ensures plugin messages are sent from the owning region instead of the global
+     * region (which would throw {@code IllegalStateException} or drop the packet).
+     */
+    private void runOnPlayerRegion(Player player, Runnable action) {
+        player.getScheduler().execute(plugin, action, () -> {}, 0L);
     }
 
     void handleKey(Player player, String keyId) {
