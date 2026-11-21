@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/static/v1?label=MINECRAFT&message=1.20.1%20~%2026.3&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Minecraft 1.20.1 ~ 26.3">
   <img src="https://img.shields.io/static/v1?label=SERVER&message=PAPER&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Server: Paper">
   <img src="https://img.shields.io/static/v1?label=CLIENT&message=FABRIC&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client: Fabric">
-  <img src="https://img.shields.io/static/v1?label=VERSION&message=1.7.2&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.7.2">
+  <img src="https://img.shields.io/static/v1?label=VERSION&message=1.7.2&color=FF5C8A&labelColor=555555&style=for-the-badge" alt="Client 1.7.3">
 </p>
 
 - - -
