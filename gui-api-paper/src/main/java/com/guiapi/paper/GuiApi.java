@@ -9,8 +9,10 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 /**
@@ -18,6 +20,9 @@ import java.util.function.Consumer;
  */
 public final class GuiApi {
     private static GuiApi instance;
+
+    /** Minimum client version that supports rebindable keys (register_key message). */
+    private static final String MIN_REGISTER_KEY_VERSION = "1.7.1";
 
     final GuiApiPlugin plugin;
     final ChunkedChannel channel;
@@ -41,6 +46,9 @@ public final class GuiApi {
     private volatile String clickSound;
     private volatile float clickSoundVolume = 0.7f;
     private final Map<String, Consumer<Player>> keyHandlers = new ConcurrentHashMap<>();
+
+    /** Actions queued by plugins to run once the client has handshook (clientVersion available). */
+    private final Map<UUID, Queue<Runnable>> pendingReadyActions = new ConcurrentHashMap<>();
 
     GuiApi(GuiApiPlugin plugin) {
         this.plugin = plugin;
@@ -323,7 +331,13 @@ public final class GuiApi {
     /**
      * Registers a shortcut that appears in the vanilla Controls screen, where the player can
      * rebind it. The setting is persisted in the client's {@code options.txt} and survives
-     * reconnects, so unlike {@link #bindKey} this does not need to be re-sent on every join.
+     * reconnects.
+     *
+     * <p>For clients older than {@value #MIN_REGISTER_KEY_VERSION} (which do not support
+     * rebindable keys), this automatically falls back to an invisible shortcut
+     * (same as {@link #bindKey}), so the feature still works — it just won't show up in
+     * the Controls screen on those clients. Plugins do not need to check the client version
+     * themselves.</p>
      *
      * @param keyId         logical id, also used with {@link #addKeyHandler}; plugin-prefixed
      * @param label         display name shown in the Controls screen
@@ -334,8 +348,21 @@ public final class GuiApi {
         if (keyId == null || keyId.isEmpty() || label == null) return;
         registeredKeys.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
                 .put(keyId, new RegisteredKey(label, defaultKeyCode));
-        if (isClientSupported(player)) {
-            runOnPlayerRegion(player, () -> sendKeyRegistration(player, keyId, label, defaultKeyCode));
+        // Wait for the handshake so we know the client version; then pick the right packet.
+        runWhenClientReady(player, () -> dispatchKeyRegistration(player, keyId, label, defaultKeyCode));
+    }
+
+    /**
+     * Sends a key registration as {@code register_key} for modern clients, or falls back to
+     * {@code bind_key} for clients older than {@value #MIN_REGISTER_KEY_VERSION}.
+     */
+    private void dispatchKeyRegistration(Player player, String keyId, String label, Integer defaultKeyCode) {
+        String version = clientVersion(player);
+        if (version != null && compareVersion(version, MIN_REGISTER_KEY_VERSION) >= 0) {
+            sendKeyRegistration(player, keyId, label, defaultKeyCode);
+        } else if (defaultKeyCode != null && defaultKeyCode > 0) {
+            // Old client: register_key is not understood, use the invisible bind_key instead.
+            sendKeyBinding(player, keyId, defaultKeyCode);
         }
     }
 
@@ -393,6 +420,34 @@ public final class GuiApi {
         // again one tick later to make sure late registrations reach the client.
         replayKeyBindings(player);
         player.getScheduler().runDelayed(plugin, task -> replayKeyBindings(player), () -> {}, 1L);
+        // Run any actions plugins queued via runWhenClientReady. clientVersion is now available
+        // so plugins can safely branch between bindKey / registerKey based on the client version.
+        Queue<Runnable> pending = pendingReadyActions.remove(player.getUniqueId());
+        if (pending != null) {
+            Runnable action;
+            while ((action = pending.poll()) != null) {
+                runOnPlayerRegion(player, action);
+            }
+        }
+    }
+
+    /**
+     * Runs {@code action} once the player's GuiApi client has completed the handshake, at which
+     * point {@link #clientVersion(Player)} returns the reported version (or {@code null} for
+     * very old clients that do not report one). If the client has already handshook the action
+     * runs immediately.
+     *
+     * <p>Use this from {@code PlayerJoinEvent} when you need to branch on the client version
+     * (e.g. choosing between {@link #bindKey} and {@link #registerKey}).</p>
+     */
+    public void runWhenClientReady(Player player, Runnable action) {
+        if (isClientSupported(player)) {
+            runOnPlayerRegion(player, action);
+        } else {
+            pendingReadyActions
+                    .computeIfAbsent(player.getUniqueId(), k -> new ConcurrentLinkedQueue<>())
+                    .add(action);
+        }
     }
 
     /** Re-sends all stored shortcut bindings/registrations for the player to the client. */
@@ -404,8 +459,37 @@ public final class GuiApi {
         Map<String, RegisteredKey> registered = registeredKeys.get(player.getUniqueId());
         if (registered != null) {
             registered.forEach((keyId, meta) ->
-                    sendKeyRegistration(player, keyId, meta.label(), meta.defaultCode()));
+                    dispatchKeyRegistration(player, keyId, meta.label(), meta.defaultCode()));
         }
+    }
+
+    /**
+     * Compares two dotted version strings like "1.7.1" and "1.21.10". Non-numeric suffixes
+     * (e.g. {@code -fabric}) are ignored.
+     *
+     * @return negative if a &lt; b, 0 if equal, positive if a &gt; b
+     */
+    public static int compareVersion(String a, String b) {
+        String[] pa = a.split("\\.");
+        String[] pb = b.split("\\.");
+        int len = Math.max(pa.length, pb.length);
+        for (int i = 0; i < len; i++) {
+            int na = i < pa.length ? parseVersionSegment(pa[i]) : 0;
+            int nb = i < pb.length ? parseVersionSegment(pb[i]) : 0;
+            if (na != nb) return Integer.compare(na, nb);
+        }
+        return 0;
+    }
+
+    private static int parseVersionSegment(String s) {
+        // "10-fabric" -> 10, "21" -> 21, "" -> 0
+        StringBuilder digits = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '0' && c <= '9') digits.append(c);
+            else break;
+        }
+        return digits.isEmpty() ? 0 : Integer.parseInt(digits.toString());
     }
 
     /**
@@ -499,6 +583,7 @@ public final class GuiApi {
         sentSounds.remove(playerId);
         keyBindings.remove(playerId);
         registeredKeys.remove(playerId);
+        pendingReadyActions.remove(playerId);
         channel.discard(playerId);
     }
 

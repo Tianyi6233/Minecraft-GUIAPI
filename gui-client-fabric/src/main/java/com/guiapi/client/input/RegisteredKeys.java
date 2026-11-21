@@ -9,7 +9,9 @@ import org.lwjgl.glfw.GLFW;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -46,50 +48,103 @@ public final class RegisteredKeys {
         KeyMapping mapping = new KeyMapping(label, code, CATEGORY);
         allMappings().put(mapping.getName(), mapping);
         addToOptions(mapping);
-        // The player may have rebound this shortcut on a previous session; the vanilla
-        // Options loader only runs once at startup, so a KeyMapping created at runtime
-        // would otherwise fall back to the default code. Read the saved value back.
-        restoreSavedBinding(mapping);
+        // Restore the player's previously saved binding. We keep our own persistence file
+        // (guiapi-keybindings.properties) because vanilla Options.save() deletes key_<label>
+        // entries for KeyMappings that are no longer in Options.keyMappings — and we remove
+        // ours on disconnect. Falling back to options.txt keeps compatibility with bindings
+        // saved by older client versions that used options.txt directly.
+        String saved = readSavedBinding(keyId);
+        if (saved == null) saved = readFromOptionsTxt(label);
+        if (saved != null) applyKey(mapping, saved);
         BY_ID.put(keyId, mapping);
     }
 
     /**
-     * Reads the player's previously saved binding for this mapping from {@code options.txt}
-     * and applies it. Falls back silently to the default code if nothing is saved or the
-     * file cannot be read (e.g. read-only game directory).
+     * Reads a saved binding for the given keyId from our own persistence file
+     * ({@code guiapi-keybindings.properties}).
      *
-     * <p>{@code InputConstants} and its {@code getKey(String)} live in different packages
-     * across MC versions, so the lookup is done reflectively.</p>
+     * @return the saved key name (e.g. {@code "key.keyboard.m"}), or null if not present
      */
-    private static void restoreSavedBinding(KeyMapping mapping) {
+    private static String readSavedBinding(String keyId) {
+        File file = keyBindingsFile();
+        if (!file.exists()) return null;
+        Properties props = new Properties();
+        try (FileInputStream in = new FileInputStream(file)) {
+            props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+            return null;
+        }
+        String v = props.getProperty(keyId);
+        return (v == null || v.isBlank()) ? null : v;
+    }
+
+    /**
+     * Reads the saved binding for the given label from vanilla {@code options.txt}.
+     * Used as a fallback for bindings saved by older client versions.
+     */
+    private static String readFromOptionsTxt(String label) {
         try {
             File optionsFile = new File(Minecraft.getInstance().gameDirectory, "options.txt");
-            if (!optionsFile.exists()) return;
+            if (!optionsFile.exists()) return null;
             Properties props = new Properties();
-            // Minecraft writes options.txt as UTF-8; Java Properties defaults to ISO-8859-1,
-            // which garbles non-ASCII key names (e.g. "key_打开主菜单") and makes the lookup miss.
             try (FileInputStream in = new FileInputStream(optionsFile)) {
                 props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
             }
-            String saved = props.getProperty("key_" + mapping.getName());
-            if (saved == null || saved.isBlank()) return;
+            String saved = props.getProperty("key_" + label);
+            return (saved == null || saved.isBlank()) ? null : saved;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Applies a saved key name (e.g. {@code "key.keyboard.m"}) to the mapping and rebuilds
+     * the static key lookup table so the new key actually fires.
+     */
+    private static void applyKey(KeyMapping mapping, String saved) {
+        try {
             Class<?> inputConstants = findInputConstantsClass();
             if (inputConstants == null) return;
             Object key = inputConstants.getMethod("getKey", String.class).invoke(null, saved);
             Method setKey = mapping.getClass().getMethod("setKey", key.getClass());
             setKey.invoke(mapping, key);
-            // setKey() only updates the mapping's key field, which is what the Controls screen
-            // displays. The actual key->KeyMapping lookup table used for input detection is a
-            // static map that is only rebuilt by KeyMapping.resetMapping() (normally called by
-            // the Controls screen). Without it, the old default key is still the one that fires.
             try {
                 Method resetMapping = KeyMapping.class.getMethod("resetMapping");
                 resetMapping.invoke(null);
             } catch (NoSuchMethodException ignored) {
             }
-        } catch (Exception e) {
-            // ignore - fall back to the default binding
+        } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * Persists all currently registered bindings to {@code guiapi-keybindings.properties}.
+     * Called on disconnect so that bindings survive a full game restart (vanilla Options.save()
+     * would otherwise drop the entries because we remove the KeyMappings from Options.keyMappings).
+     */
+    private static void saveBindings() {
+        Properties props = new Properties();
+        for (Map.Entry<String, KeyMapping> e : BY_ID.entrySet()) {
+            String keyName = keyNameOf(e.getValue());
+            if (keyName != null) props.setProperty(e.getKey(), keyName);
+        }
+        try (FileOutputStream out = new FileOutputStream(keyBindingsFile())) {
+            props.store(new OutputStreamWriter(out, StandardCharsets.UTF_8), "GuiApi key bindings");
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static String keyNameOf(KeyMapping mapping) {
+        try {
+            Method saveString = KeyMapping.class.getMethod("saveString");
+            return (String) saveString.invoke(mapping);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static File keyBindingsFile() {
+        return new File(Minecraft.getInstance().gameDirectory, "guiapi-keybindings.properties");
     }
 
     /** Locates {@code InputConstants} across MC versions (package moved after 1.20.4). */
@@ -118,6 +173,10 @@ public final class RegisteredKeys {
 
     /** Removes every registered shortcut (called on disconnect). */
     public static void clear() {
+        // Persist current bindings before removing them, so they survive a full game restart
+        // (vanilla Options.save() drops key_<label> entries for KeyMappings no longer in
+        // Options.keyMappings, which we are about to remove).
+        saveBindings();
         Map<String, KeyMapping> all = allMappings();
         for (KeyMapping mapping : BY_ID.values()) {
             all.remove(mapping.getName());
